@@ -1155,17 +1155,6 @@ static int lua_error_handler(lua_State *L)
     return 0;
 }
 
-static void * lua_allocator(void *ud, void *ptr, size_t osize, size_t nsize) {
-
-    (void)ud; (void)osize; /* not used */
-
-    if (nsize == 0) {
-        mg_free(ptr);
-        return NULL;
-    }
-    return mg_realloc(ptr, nsize);
-}
-
 void mg_exec_lua_script(struct mg_connection *conn, const char *path,
     const void **exports)
 {
@@ -1176,7 +1165,7 @@ void mg_exec_lua_script(struct mg_connection *conn, const char *path,
     conn->must_close=1;
 
     /* Execute a plain Lua script. */
-    if (path != NULL && (L = lua_newstate(lua_allocator, NULL)) != NULL) {
+    if (path != NULL && (L = luaL_newstate()) != NULL) {
         prepare_lua_environment(conn->ctx, conn, NULL, L, path, LUA_ENV_TYPE_PLAIN_LUA_PAGE);
         lua_pushcclosure(L, &lua_error_handler, 0);
 
@@ -1228,9 +1217,9 @@ static int handle_lsp_request(struct mg_connection *conn, const char *path, stru
             luaL_error(ls, "mmap(%s, %zu, %d): %s", path, (size_t) filep->size,
                 fileno(filep->fp), strerror(errno));
         }
-    } else if ((L = (ls != NULL ? ls : lua_newstate(lua_allocator, NULL))) == NULL) {
+    } else if ((L = (ls != NULL ? ls : luaL_newstate())) == NULL) {
         send_http_error(conn, 500, "%s",
-            "Error: Cannot execute script\nlua_newstate failed");
+            "Error: Cannot execute script\nluaL_newstate failed");
     } else {
         /* We're not sending HTTP headers here, Lua page must do it. */
         if (ls == NULL) {
@@ -1281,7 +1270,7 @@ static void * lua_websocket_new(const char * script, struct mg_connection *conn)
         ws = &(*shared_websock_list)->ws;
         ws->script = mg_strdup(script); /* TODO: handle OOM */
         pthread_mutex_init(&(ws->ws_mutex), NULL);
-        ws->state = lua_newstate(lua_allocator, NULL);
+        ws->state = luaL_newstate();
         ws->conn[0] = conn;
         ws->references = 1;
         (void)pthread_mutex_lock(&(ws->ws_mutex));
